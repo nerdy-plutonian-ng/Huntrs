@@ -1,3 +1,14 @@
 <resources>
     <string name="app_name">Huntrs</string>
+    <string name="hunt">Hunt</string>
+    <string name="description">Description</string>
+    <string name="title">Title</string>
+    <string name="checkpoints">CheckPoints</string>
+    <string name="next_checkpoint_clue">Next checkpoint clue</string>
+    <string name="clue_to_this_location">Clue to this location</string>
+    <string name="add_another_clue">Add another clue</string>
+    <string name="save">Save</string>
+    <string name="update">Update</string>
+    <string name="cancel">Cancel</string>
+    <string name="location_rationale">Precise location is needed for this app to work as intended</string>
 </resources>
