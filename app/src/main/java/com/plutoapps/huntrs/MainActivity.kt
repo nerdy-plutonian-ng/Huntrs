@@ -1,11 +1,17 @@
 package com.plutoapps.huntrs
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.ActivityResultLauncher
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.ViewModelProvider
@@ -24,6 +30,8 @@ import com.plutoapps.huntrs.ui.theme.AppTheme
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -45,7 +53,16 @@ fun HuntrsApp() {
         LocalContext.current as ViewModelStoreOwner,
         factory
     )[HuntsViewModel::class.java]
-    val state = viewModel.getHunts().collectAsState(initial = emptyList())
+
+    var isLoadingMine by rememberSaveable {
+        mutableStateOf(true)
+    }
+
+    var state = viewModel.getHuntsByType(isLoadingMine).collectAsState(initial = emptyList())
+
+    val loadHuntsByType : (Boolean) -> Unit = {
+        isLoadingMine = it
+    }
 
     val upsertHunt: (HuntWithCheckpoints) -> Unit = {
         scope.launch {
@@ -67,7 +84,7 @@ fun HuntrsApp() {
         startDestination = Routes.Home.name
     ) {
         composable(route = Routes.Home.name) {
-            HomeScreen(hunts = state.value, upsertHunt = upsertHunt,getHunt = getHunt,deleteHunt = deleteHunt)
+            HomeScreen(hunts = state.value, upsertHunt = upsertHunt,getHunt = getHunt,deleteHunt = deleteHunt,loadHuntsByType = loadHuntsByType)
         }
     }
 }

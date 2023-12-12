@@ -70,6 +70,9 @@ dependencies {
     //room
     val roomVersion = "2.6.1"
 
+    //play services
+    implementation("com.google.android.gms:play-services-location:21.0.1")
+
     implementation("androidx.room:room-runtime:$roomVersion")
     annotationProcessor("androidx.room:room-compiler:$roomVersion")
 

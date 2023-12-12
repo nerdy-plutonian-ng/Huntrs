@@ -11,4 +11,8 @@
     <string name="update">Update</string>
     <string name="cancel">Cancel</string>
     <string name="location_rationale">Precise location is needed for this app to work as intended</string>
+    <string name="created_on">Created on %s</string>
+    <string name="share">Share</string>
+    <string name="test">Test</string>
+    <string name="play">Play</string>
 </resources>

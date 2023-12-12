@@ -32,26 +32,46 @@ import androidx.compose.ui.unit.dp
 import com.plutoapps.huntrs.R
 import com.plutoapps.huntrs.data.models.CheckPoint
 import android.Manifest
+import android.app.Activity.RESULT_OK
 import android.content.Context
 import android.content.Intent
+import android.content.IntentSender
 import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.net.Uri
+import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
+import androidx.activity.result.IntentSenderRequest
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.core.app.ActivityCompat
+import com.google.android.gms.common.api.GoogleApiClient
+import com.google.android.gms.common.api.ResolvableApiException
+import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.LocationSettingsRequest
+import com.google.android.gms.location.LocationSettingsResponse
+import com.google.android.gms.location.LocationSettingsResult
+import com.google.android.gms.location.LocationSettingsStatusCodes
 import com.google.android.gms.location.Priority
+import com.google.android.gms.location.SettingsClient
+import com.google.android.gms.tasks.Task
 import com.plutoapps.huntrs.data.models.HuntWithCheckpoints
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import java.util.Date
 import java.util.UUID
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 
 @Composable
@@ -62,6 +82,16 @@ fun HuntSheet(
     upsertHunt: (HuntWithCheckpoints) -> Unit,
     getHunt: suspend (String) -> HuntWithCheckpoints
 ) {
+
+    val settingResultRequest = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
+    ) { activityResult ->
+        if (activityResult.resultCode == RESULT_OK)
+            Log.d("appDebug", "Accepted")
+        else {
+            Log.d("appDebug", "Denied")
+        }
+    }
 
     var hunt by rememberSaveable {
         mutableStateOf<HuntWithCheckpoints?>(null)
@@ -90,6 +120,10 @@ fun HuntSheet(
         mutableStateOf("")
     }
 
+    var time by rememberSaveable {
+        mutableLongStateOf(Date().time)
+    }
+
     var checkpoints by rememberSaveable {
         mutableStateOf(listOf(CheckPoint(parentId = huntId)))
     }
@@ -105,14 +139,17 @@ fun HuntSheet(
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) {
-        if (it) {
-
-        } else {
+        if (!it) {
             Toast.makeText(
                 context,
                 context.getString(R.string.location_rationale),
                 Toast.LENGTH_LONG
             ).show()
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+            val uri = Uri.fromParts("package", context.packageName, null)
+            intent.data = uri
+            context.startActivity(intent)
+
         }
 
     }
@@ -126,42 +163,40 @@ fun HuntSheet(
         }
 
     val getLocation: (Int, CheckPoint) -> Unit = { index, checkpoint ->
-        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        val isGpsEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
 
-
-        if (isGpsEnabled) {
-            if (ActivityCompat.checkSelfPermission(
-                    context,
-                    Manifest.permission.ACCESS_FINE_LOCATION
-                ) == PackageManager.PERMISSION_GRANTED
-            ) {
+        if (ActivityCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+            val isGpsEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
+            if(isGpsEnabled) {
                 fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
                     .addOnSuccessListener {
                         if (it != null) {
-                            Log.d("beesh", "latlong is ${it.latitude} ${it.longitude}")
                             updateWithLocation(index, checkpoint, it.latitude, it.longitude)
-                        } else {
-                            Log.d("beesh", "latlong is null")
                         }
                     }
-
-            } else if (ActivityCompat.checkSelfPermission(
-                    context,
-                    Manifest.permission.ACCESS_FINE_LOCATION
-                ) == PackageManager.PERMISSION_DENIED
-            ) {
-                Log.d("beesh", "denied")
-                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                val uri = Uri.fromParts("package", context.packageName, null)
-                intent.data = uri
-                context.startActivity(intent)
             } else {
-                Log.d("beesh", "not asked")
-                locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                checkLocationSetting(
+                    context = context,
+                    onDisabled = { intentSenderRequest ->
+                        settingResultRequest.launch(intentSenderRequest)
+                    },
+                    onEnabled = { /* This will call when setting is already enabled */ }
+                )
             }
+        } else if (ActivityCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_DENIED
+        ) {
+            locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
         } else {
-            val intent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+            val uri = Uri.fromParts("package", context.packageName, null)
+            intent.data = uri
             context.startActivity(intent)
         }
 
@@ -174,8 +209,8 @@ fun HuntSheet(
                 title = hunt?.title ?: ""
                 description = hunt?.description ?: ""
                 checkpoints = hunt?.checkPoints ?: emptyList()
-                for (c in checkpoints)
-                    Log.d("beesh c", c.toString())
+                time = hunt?.time ?: Date().time
+
             }
         }
     })
@@ -269,6 +304,7 @@ fun HuntSheet(
                         title = title,
                         description = description,
                         checkPoints = checkpoints,
+                        time = time,
                     )
                     Log.d("beesh about to save", newHunt.toString())
                     upsertHunt(newHunt)
@@ -297,4 +333,40 @@ fun HuntSheet(
 @Composable
 fun HuntSheetPreview() {
     HuntSheet(id = "null", dismissSheet = { }, upsertHunt = {}, getHunt = { HuntWithCheckpoints() })
+}
+
+fun checkLocationSetting(
+    context: Context,
+    onDisabled: (IntentSenderRequest) -> Unit,
+    onEnabled: () -> Unit
+) {
+
+    val locationRequest = LocationRequest.create().apply {
+        interval = 1000
+        fastestInterval = 1000
+        priority = LocationRequest.PRIORITY_HIGH_ACCURACY
+    }
+
+    val client: SettingsClient = LocationServices.getSettingsClient(context)
+    val builder: LocationSettingsRequest.Builder = LocationSettingsRequest
+        .Builder()
+        .addLocationRequest(locationRequest)
+
+    val gpsSettingTask: Task<LocationSettingsResponse> =
+        client.checkLocationSettings(builder.build())
+
+    gpsSettingTask.addOnSuccessListener { onEnabled() }
+    gpsSettingTask.addOnFailureListener { exception ->
+        if (exception is ResolvableApiException) {
+            try {
+                val intentSenderRequest = IntentSenderRequest
+                    .Builder(exception.resolution)
+                    .build()
+                onDisabled(intentSenderRequest)
+            } catch (sendEx: IntentSender.SendIntentException) {
+                // ignore here
+            }
+        }
+    }
+
 }
