@@ -3,9 +3,11 @@ package com.plutoapps.huntrs.ui.screens.home
 import android.Manifest
 import android.app.Activity
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -17,6 +19,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -37,6 +40,7 @@ import androidx.compose.material3.DismissDirection
 import androidx.compose.material3.DismissValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
@@ -49,6 +53,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDismissState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,13 +63,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
+import androidx.core.app.ActivityCompat.startActivityForResult
+import androidx.core.content.ContextCompat.getSystemService
 import com.plutoapps.huntrs.R
 import com.plutoapps.huntrs.data.models.Hunt
 import com.plutoapps.huntrs.data.models.HuntWithCheckpoints
+import com.plutoapps.huntrs.data.repos.PermissionsRepo
 import com.plutoapps.huntrs.ui.composables.HuntSheet
 import com.plutoapps.huntrs.ui.composables.ShareSheet
 import kotlinx.coroutines.Dispatchers
@@ -82,7 +91,8 @@ fun HomeScreen(
     upsertHunt: (HuntWithCheckpoints) -> Unit,
     getHunt: suspend (String) -> HuntWithCheckpoints,
     deleteHunt: (Hunt) -> Unit,
-    loadHuntsByType: (Boolean) -> Unit
+    loadHuntsByType: (Boolean) -> Unit,
+    sharingViewModel: BluetoothSharingViewModel?
 ) {
 
     val context = LocalContext.current
@@ -142,6 +152,11 @@ fun HomeScreen(
     var showing by rememberSaveable {
         mutableStateOf("Mine")
     }
+
+    var isSending by rememberSaveable {
+        mutableStateOf(true)
+    }
+
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val shareSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
@@ -162,6 +177,19 @@ fun HomeScreen(
         }
     }
 
+    val shareHunt : () -> Unit = {
+        if(ActivityCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED){
+
+        }
+    }
+
+    LaunchedEffect(Unit){
+        sharingViewModel?.setSaveHunt(upsertHunt)
+    }
+
     Scaffold(topBar = {
         CenterAlignedTopAppBar(title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -172,16 +200,34 @@ fun HomeScreen(
         })
     },
         floatingActionButton = {
-            ExtendedFloatingActionButton(onClick = {
-                showBottomSheet = true
-                id = null
-                scope.launch {
-                    sheetState.expand()
+
+            Column(horizontalAlignment = Alignment.End) {
+                FloatingActionButton(onClick = {
+                    isSending = false
+                    if(PermissionsRepo(context,context as Activity).canAccessLocation()){
+                        if(PermissionsRepo(context,context).canAccessBluetooth()){
+                            showShareBottomSheet = true
+                            scope.launch {
+                                withContext(Dispatchers.Main){
+                                    huntToBeShared = null
+                                }
+                                sheetState.expand()
+                            }
+                        }
+                    }
+                }) {
+                    Icon(painterResource(id = R.drawable.baseline_connect_without_contact_24), null)
                 }
-            }) {
-                Icon(Icons.Default.Add, null)
-                Spacer(modifier = modifier.width(8.dp))
-                Text(text = stringResource(R.string.hunt))
+                Spacer(modifier = modifier.height(16.dp))
+                FloatingActionButton(onClick = {
+                    showBottomSheet = true
+                    id = null
+                    scope.launch {
+                        sheetState.expand()
+                    }
+                }) {
+                    Icon(painterResource(id = R.drawable.baseline_post_add_24), null)
+                }
             }
         }) { paddingValues ->
         if (showBottomSheet)
@@ -195,7 +241,7 @@ fun HomeScreen(
             }
         if(showShareBottomSheet)
             ModalBottomSheet(onDismissRequest = dismissShareSheet,sheetState = shareSheetState) {
-                ShareSheet(huntWithCheckpoints = HuntWithCheckpoints(),dismissSheet = dismissSheet,)
+                ShareSheet(huntWithCheckpoints = huntToBeShared,dismissSheet = dismissSheet,sharingViewModel = sharingViewModel, isSending = isSending,)
             }
         Column(modifier = modifier.padding(paddingValues)) {
             Row(horizontalArrangement = Arrangement.Center, modifier = modifier.fillMaxWidth()) {
@@ -290,40 +336,18 @@ fun HomeScreen(
                                         }
                                         Spacer(modifier = modifier.width(16.dp))
                                         OutlinedButton(onClick = {
-                                            if (ActivityCompat.checkSelfPermission(
-                                                    context,
-                                                    Manifest.permission.BLUETOOTH_CONNECT
-                                                ) == PackageManager.PERMISSION_GRANTED
-                                            ) {
-                                                // Check to see if the Bluetooth classic feature is available.
-                                                val bluetoothAvailable = context.packageManager.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH)
-
-// Check to see if the BLE feature is available.
-                                                val bluetoothAdapter =
-                                                    BluetoothAdapter.getDefaultAdapter()
-                                                val isBluetoothEnabled =
-                                                    bluetoothAdapter?.isEnabled == true
-                                                if (!isBluetoothEnabled || !bluetoothAvailable) {
-                                                    val enableBluetoothIntent =
-                                                        Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
-                                                    enableBluetoothLauncher.launch(
-                                                        enableBluetoothIntent
-                                                    )
-                                                } else {
+                                            if(PermissionsRepo(context,context as Activity).canAccessLocation()){
+                                                if(PermissionsRepo(context,context).canAccessBluetooth()){
+                                                    isSending = true
                                                     showShareBottomSheet = true
                                                     scope.launch {
                                                         withContext(Dispatchers.Main){
                                                             huntToBeShared = getHunt(hunt.id)
+                                                            Log.d("beesh sharing",huntToBeShared.toString())
                                                         }
                                                         sheetState.expand()
                                                     }
                                                 }
-                                            } else if (ActivityCompat.checkSelfPermission(
-                                                    context,
-                                                    Manifest.permission.BLUETOOTH_CONNECT
-                                                ) == PackageManager.PERMISSION_DENIED
-                                            ) {
-                                                bluetoothPermissionLauncher.launch(permissionsList.toTypedArray())
                                             }
                                         }) {
                                             Icon(Icons.Default.Share,null)
@@ -351,6 +375,7 @@ fun HomeScreenPreview() {
         upsertHunt = {},
         getHunt = { HuntWithCheckpoints() },
         deleteHunt = { },
-        loadHuntsByType = { }
+        loadHuntsByType = { },
+        sharingViewModel = null
     )
 }

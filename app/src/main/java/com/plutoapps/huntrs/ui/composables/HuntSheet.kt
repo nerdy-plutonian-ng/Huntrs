@@ -32,6 +32,8 @@ import androidx.compose.ui.unit.dp
 import com.plutoapps.huntrs.R
 import com.plutoapps.huntrs.data.models.CheckPoint
 import android.Manifest
+import android.annotation.SuppressLint
+import android.app.Activity
 import android.app.Activity.RESULT_OK
 import android.content.Context
 import android.content.Intent
@@ -39,7 +41,6 @@ import android.content.IntentSender
 import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.net.Uri
-import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
@@ -52,28 +53,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.core.app.ActivityCompat
-import com.google.android.gms.common.api.GoogleApiClient
 import com.google.android.gms.common.api.ResolvableApiException
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.LocationSettingsRequest
 import com.google.android.gms.location.LocationSettingsResponse
-import com.google.android.gms.location.LocationSettingsResult
-import com.google.android.gms.location.LocationSettingsStatusCodes
 import com.google.android.gms.location.Priority
 import com.google.android.gms.location.SettingsClient
 import com.google.android.gms.tasks.Task
 import com.plutoapps.huntrs.data.models.HuntWithCheckpoints
-import kotlinx.coroutines.Dispatchers
+import com.plutoapps.huntrs.data.repos.PermissionsRepo
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withContext
 import java.util.Date
 import java.util.UUID
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
 
+@SuppressLint("MissingPermission")
 @Composable
 fun HuntSheet(
     modifier: Modifier = Modifier,
@@ -164,11 +159,21 @@ fun HuntSheet(
 
     val getLocation: (Int, CheckPoint) -> Unit = { index, checkpoint ->
 
-        if (ActivityCompat.checkSelfPermission(
+        if(PermissionsRepo(context,context as Activity).canAccessLocation()){
+            fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
+                .addOnSuccessListener {
+                    if (it != null) {
+                        updateWithLocation(index, checkpoint, it.latitude, it.longitude)
+                    }
+                }
+        }
+
+ /*       if (ActivityCompat.checkSelfPermission(
                 context,
                 Manifest.permission.ACCESS_FINE_LOCATION
             ) == PackageManager.PERMISSION_GRANTED
         ) {
+
             val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
             val isGpsEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
             if(isGpsEnabled) {
@@ -184,7 +189,7 @@ fun HuntSheet(
                     onDisabled = { intentSenderRequest ->
                         settingResultRequest.launch(intentSenderRequest)
                     },
-                    onEnabled = { /* This will call when setting is already enabled */ }
+                    onEnabled = { *//* This will call when setting is already enabled *//* }
                 )
             }
         } else if (ActivityCompat.checkSelfPermission(
@@ -198,7 +203,7 @@ fun HuntSheet(
             val uri = Uri.fromParts("package", context.packageName, null)
             intent.data = uri
             context.startActivity(intent)
-        }
+        }*/
 
     }
 
