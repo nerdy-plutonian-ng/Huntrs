@@ -75,16 +75,7 @@ class BluetoothSharingViewModel(private val context: Context) : ViewModel() {
     }
 
     fun connectToClient(bluetoothDevice: BluetoothDevice,sharedHunt: HuntWithCheckpoints?){
-        _sharingState.update {
-            it.copy(selectedDevices = bluetoothDevice, stage = SharingStage.Sharing)
-        }
         InitiateConnectionThread(bluetoothDevice,sharedHunt).start()
-    }
-
-    private fun mopUp(isHost:Boolean){
-        _sharingState.update {
-            it.copy(sharedHunt = null, stage = SharingStage.Discovering, selectedDevices = null)
-        }
     }
 
     fun selectHuntToShare(huntWithCheckpoints: HuntWithCheckpoints?){
@@ -123,6 +114,7 @@ class BluetoothSharingViewModel(private val context: Context) : ViewModel() {
 
     @SuppressLint("MissingPermission")
     private inner class AcceptConnectionThread : Thread() {
+
 
         private val mmServerSocket: BluetoothServerSocket? by lazy(LazyThreadSafetyMode.NONE) {
             bluetoothAdapter?.listenUsingInsecureRfcommWithServiceRecord(NAME, UUID.fromString(APP_ID))
@@ -200,11 +192,22 @@ class BluetoothSharingViewModel(private val context: Context) : ViewModel() {
         private val mmBuffer: ByteArray = ByteArray(1024) // mmBuffer store for the stream
 
         override fun run() {
+            _sharingState.update {
+                it.copy(stage = SharingStage.Sharing)
+            }
             if(huntWithCheckpoints == null){
                 read()
             } else {
                 write(huntWithCheckpoints.toJson().toByteArray())
             }
+            _sharingState.update {
+                it.copy(stage = SharingStage.Shared)
+            }
+
+            //viewModelScope.launch {
+              //  delay(1000)
+
+            //}
         }
 
         private fun read(){
@@ -216,13 +219,10 @@ class BluetoothSharingViewModel(private val context: Context) : ViewModel() {
                 numBytes = try {
                     mmInStream.read(mmBuffer)
                 } catch (e: IOException) {
-                    Log.d(TAG, "Input stream was disconnected", e)
                     break
                 }
                 val huntStr = String(mmBuffer,0,numBytes)
-                Log.d("beesh what i received",huntStr)
                 val hunt = HuntWithCheckpoints.fromJson(huntStr).copy(isMine = false)
-                Log.d("beesh what i converted",hunt.toString())
                 upsertHunt?.let { it(hunt) }
 
                 // Send the obtained bytes to the UI activity.
@@ -238,13 +238,7 @@ class BluetoothSharingViewModel(private val context: Context) : ViewModel() {
             Log.d("beesh what i sent",huntWithCheckpoints.toString())
             try {
                 mmOutStream.write(bytes)
-                _sharingState.update {
-                    it.copy(stage = SharingStage.Shared)
-                }
             } catch (e: IOException) {
-                _sharingState.update {
-                    it.copy(stage = SharingStage.Discovering)
-                }
                 return
             }
         }

@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.pm.PackageManager
+import android.util.Log
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -34,6 +35,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.core.app.ActivityCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStoreOwner
@@ -58,7 +60,7 @@ fun ShareSheet(
     val state = sharingViewModel!!.sharingState.collectAsState()
 
     LaunchedEffect(key1 = Key(101), block = {
-
+        Log.d("beesh","is sending = $isSending")
         if(PermissionsRepo(context,context as Activity).canAccessLocation()){
             if(PermissionsRepo(context,context).canAccessBluetooth()){
                 if(isSending){
@@ -72,8 +74,8 @@ fun ShareSheet(
     })
 
     if(isSending){
-        if(state.value.stage == SharingStage.Shared){
-            SharedView(stage = state.value.stage)
+        if(state.value.stage != SharingStage.Discovering){
+            SharedView(stage = state.value.stage, isSending = isSending)
         } else {
             Column(
                 modifier = modifier
@@ -111,26 +113,33 @@ fun ShareSheet(
                 .padding(16.dp)
                 .fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            SharedView(stage = state.value.stage)
+            SharedView(stage = state.value.stage,isSending = isSending)
         }
     }
 }
 
 @Composable
-fun SharedView(modifier : Modifier = Modifier ,stage: SharingStage) {
+fun SharedView(modifier : Modifier = Modifier ,stage: SharingStage, isSending: Boolean) {
     if(stage == SharingStage.Sharing){
         Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Sharing", style = MaterialTheme.typography.titleLarge)
+            Text(if(isSending)"Sharing" else "Receiving", style = MaterialTheme.typography.titleLarge)
             Spacer(modifier = modifier.height(8.dp))
             LinearProgressIndicator()
-            Spacer(modifier = modifier.height(16.dp))
+            Spacer(modifier = modifier.height(32.dp))
         }
-    } else {
+    } else if(stage == SharingStage.Shared) {
         Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(Icons.Default.Check,null)
             Spacer(modifier = modifier.height(8.dp))
-            Text("Shared", style = MaterialTheme.typography.titleLarge)
-            Spacer(modifier = modifier.height(16.dp))
+            Text(if(isSending) "Shared" else "Received", style = MaterialTheme.typography.titleLarge)
+            Spacer(modifier = modifier.height(32.dp))
+        }
+    } else if (stage == SharingStage.Discovering){
+        Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(stringResource(R.string.preparing), style = MaterialTheme.typography.titleLarge)
+            Spacer(modifier = modifier.height(8.dp))
+            LinearProgressIndicator()
+            Spacer(modifier = modifier.height(32.dp))
         }
     }
 }
